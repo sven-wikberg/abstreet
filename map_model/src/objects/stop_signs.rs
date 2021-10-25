@@ -57,7 +57,8 @@ impl ControlStopSign {
             roads: BTreeMap::new(),
         };
         // One-way outbound roads don't need a stop sign, so skip them entirely.
-        for r in map.get_i(id).get_sorted_incoming_roads(map) {
+        let i = map.get_i(id);
+        for r in i.get_sorted_incoming_roads(map) {
             let r = map.get_r(r);
             let want_dir = if r.dst_i == id {
                 Direction::Fwd
@@ -96,7 +97,7 @@ impl ControlStopSign {
         // Degenerate roads and deadends don't need any stop signs. But be careful with
         // roundabouts; we want it to be lower priority to enter a roundabout than continue through
         // it.
-        if ss.roads.len() <= 2
+        if (i.is_degenerate() || i.is_deadend())
             && ss
                 .roads
                 .keys()
