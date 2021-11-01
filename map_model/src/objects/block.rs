@@ -5,7 +5,7 @@ use anyhow::Result;
 use abstutil::wraparound_get;
 use geom::{Polygon, Pt2D, Ring};
 
-use crate::{Direction, LaneID, Map, RoadID, RoadSideID, SideOfRoad};
+use crate::{Direction, Map, RoadID, RoadSideID, SideOfRoad};
 
 /// A block is defined by a perimeter that traces along the sides of roads. Inside the perimeter,
 /// the block may contain buildings and interior roads. In the simple case, a block represents a
@@ -21,7 +21,8 @@ pub struct Block {
 }
 
 /// A sequence of roads in order, beginning and ending at the same place. No "crossings" -- tracing
-/// along this sequence should geometrically yield a simple polygon.
+/// along this sequence should geometrically yield a simple polygon. This is always oriented
+/// clockwise.
 // TODO Handle the map boundary. Sometimes this perimeter should be broken up by border
 // intersections or possibly by water/park areas.
 #[derive(Clone)]
@@ -30,15 +31,16 @@ pub struct Perimeter {
 }
 
 impl Perimeter {
-    /// Starting at any lane, snap to the nearest side of that road, then begin tracing a single
-    /// block, with no interior roads. This will fail if a map boundary is reached. The results are
-    /// unusual when crossing the entrance to a tunnel or bridge.
-    pub fn single_block(map: &Map, start: LaneID) -> Result<Perimeter> {
+    /// Starting from the side of a road, trace a single block, with no interior roads. This will
+    /// fail if a map boundary is reached. The results are unusual when crossing the entrance to a
+    /// tunnel or bridge.
+    pub fn single_block(map: &Map, start: RoadSideID) -> Result<Perimeter> {
         let mut roads = Vec::new();
-        let start_road_side = map.get_l(start).get_nearest_side_of_road(map);
         // We need to track which side of the road we're at, but also which direction we're facing
-        let mut current_road_side = start_road_side;
-        let mut current_intersection = map.get_l(start).dst_i;
+        let mut current_road_side = start;
+        // TODO Somtimes we need to start at src_i to produce a clockwise result! How can we figure
+        // this out?
+        let mut current_intersection = map.get_r(start.road).dst_i;
         loop {
             let i = map.get_i(current_intersection);
             if i.is_border() {
@@ -67,8 +69,8 @@ impl Perimeter {
                 .get_r(current_road_side.road)
                 .other_endpt(current_intersection);
 
-            if current_road_side == start_road_side {
-                roads.push(start_road_side);
+            if current_road_side == start {
+                roads.push(start);
                 break;
             }
         }
@@ -81,24 +83,29 @@ impl Perimeter {
     pub fn find_all_single_blocks(map: &Map) -> Vec<Perimeter> {
         let mut seen = HashSet::new();
         let mut perimeters = Vec::new();
-        for lane in map.all_lanes() {
-            let side = lane.get_nearest_side_of_road(map);
-            if seen.contains(&side) {
-                continue;
-            }
-            match Perimeter::single_block(map, lane.id) {
-                Ok(perimeter) => {
-                    seen.extend(perimeter.roads.clone());
-                    perimeters.push(perimeter);
+        for road in map.all_roads() {
+            for side in [SideOfRoad::Left, SideOfRoad::Right] {
+                let id = RoadSideID {
+                    road: road.id,
+                    side,
+                };
+                if seen.contains(&id) {
+                    continue;
                 }
-                Err(err) => {
-                    // The logs are quite spammy and not helpful yet, since they're all expected
-                    // cases near the map boundary
-                    if false {
-                        warn!("Failed from {}: {}", lane.id, err);
+                match Perimeter::single_block(map, id) {
+                    Ok(perimeter) => {
+                        seen.extend(perimeter.roads.clone());
+                        perimeters.push(perimeter);
                     }
-                    // Don't try again
-                    seen.insert(side);
+                    Err(err) => {
+                        // The logs are quite spammy and not helpful yet, since they're all
+                        // expected cases near the map boundary
+                        if false {
+                            warn!("Failed from {:?}: {}", id, err);
+                        }
+                        // Don't try again
+                        seen.insert(id);
+                    }
                 }
             }
         }
