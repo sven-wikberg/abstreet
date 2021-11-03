@@ -14,11 +14,12 @@ use structopt::StructOpt;
 use abstio::{CityName, MapName};
 use abstutil::Timer;
 use geom::Distance;
-use map_model::RawToMapOptions;
+use map_model::{BuildingType, RawToMapOptions};
 
 use configuration::{load_configuration, ImporterConfiguration};
 
 mod berlin;
+mod geneva;
 mod configuration;
 mod generic;
 mod seattle;
@@ -243,6 +244,14 @@ impl Job {
                     utils::raw_to_map(&name, self.opts.clone(), timer)
                 };
 
+                let mut sum = 0;
+                for b in map.clone().all_buildings() {
+                    if let BuildingType::Residential { num_residents, num_housing_units: _ } = b.bldg_type {
+                        sum = sum + num_residents;
+                    }
+                }
+                println!("Num residents : {}", sum);
+
                 // Another strange step in the pipeline.
                 if name == MapName::new("de", "berlin", "center") {
                     timer.start(format!(
@@ -264,6 +273,9 @@ impl Job {
                         seattle::add_gtfs_schedules(&mut map);
                         timer.stop(format!("add GTFS schedules for {}", name.describe()));
                     }
+                } else if name == MapName::new("ch", "geneva", "center") {
+                    println!("ICI CEST GENEVE");
+                    geneva::distribute_residents(&mut map)
                 }
 
                 Some(map)
@@ -273,6 +285,15 @@ impl Job {
                 None
             };
 
+            let mut sum = 0;
+            for b in maybe_map.clone().expect("msg").all_buildings() {
+                if let BuildingType::Residential { num_residents, num_housing_units: _ } = b.bldg_type {
+                    sum = sum + num_residents;
+                }
+            }
+            println!("Num residents : {}", sum);
+
+            println!("QWEQWE geneva scenario lolélol {}", self.scenario);
             if self.scenario {
                 if self.city == CityName::seattle() {
                     timer.start(format!("scenario for {}", name.describe()));
@@ -322,6 +343,9 @@ impl Job {
                     uk::generate_scenario(maybe_map.as_ref().unwrap(), &config, timer)
                         .await
                         .unwrap();
+                }
+
+                if name == MapName::new("ch", "geneva", "center") {
                 }
             }
             timer.stop(name.describe());

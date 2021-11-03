@@ -26,6 +26,8 @@ use crate::layer::Layer;
 use crate::sandbox::dashboards::DashTab;
 use crate::sandbox::{GameplayMode, TutorialState};
 
+mod geneva;
+
 // Convenient typedef
 pub type Transition = widgetry::Transition<App>;
 
@@ -161,6 +163,8 @@ impl App {
             } else if let Some(ID::Building(id)) = self.primary.current_selection {
                 g.draw_polygon(self.cs.selected, map.get_b(id).polygon.clone());
             }
+
+            geneva::show_geneva_sub_area(g, &map);
 
             let mut cache = self.primary.agents.borrow_mut();
             cache.draw_unzoomed_agents(
